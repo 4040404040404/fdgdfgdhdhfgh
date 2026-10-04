@@ -14,13 +14,21 @@
 
 const { chromium } = require('playwright');
 
+const ZEALOUS_RIVER_URL = 'https://zealous-river-220556.puter.site';
+const ZEALOUS_RIVER_HOSTNAME = 'zealous-river-220556.puter.site';
+const COLORFUL_TV_URL = 'https://colorful-tv-258268.puter.site';
+const COLORFUL_TV_HOSTNAME = 'colorful-tv-258268.puter.site';
+
 // Starting URL (pass any URL via CLI argument or TARGET_URL env var)
 const TARGET_URL =
   process.argv[2] ||
   process.env.TARGET_URL ||
-  'https://zealous-river-220556.puter.site';
+  ZEALOUS_RIVER_URL;
 
 const BROWSER_SCRIPT = () => {
+  const STOP_HOSTNAME = 'colorful-tv-258268.puter.site';
+  const ZEALOUS_HOSTNAME = 'zealous-river-220556.puter.site';
+
   // ============================================================================
   // 1. OUT OF CONTEXT OF finale():
   //    - Stop the whole script fully if website is colorful-tv-258268.puter.site
@@ -36,8 +44,8 @@ const BROWSER_SCRIPT = () => {
   }
 
   if (
-    window.location.hostname === 'colorful-tv-258268.puter.site' ||
-    window.location.href.includes('colorful-tv-258268.puter.site')
+    window.location.hostname === STOP_HOSTNAME ||
+    window.location.href.includes(STOP_HOSTNAME)
   ) {
     stopAllTimersAndExecution();
     return;
@@ -50,8 +58,8 @@ const BROWSER_SCRIPT = () => {
 
   setInterval(() => {
     if (
-      window.location.hostname === 'colorful-tv-258268.puter.site' ||
-      window.location.href.includes('colorful-tv-258268.puter.site')
+      window.location.hostname === STOP_HOSTNAME ||
+      window.location.href.includes(STOP_HOSTNAME)
     ) {
       stopAllTimersAndExecution();
       return;
@@ -399,7 +407,7 @@ const BROWSER_SCRIPT = () => {
 
       // Map domains to their Linkvertise IDs
       const DOMAIN_CONFIG = {
-        'zealous-river-220556.puter.site': '9578664',
+        [ZEALOUS_HOSTNAME]: '9578664',
         'witty-snake-472744.puter.site': '9578688',
         'kind-street-188208.puter.site': '9578706',
         'honest-bee-81788.puter.site': '9578728',
@@ -408,7 +416,7 @@ const BROWSER_SCRIPT = () => {
         'smart-mountain-937000.puter.site': '9578779',
         'avid-mountain-909877.puter.site': '9578787',
         'jolly-road-702644.puter.site': '9578798',
-        'colorful-tv-258268.puter.site': '9578806',
+        [STOP_HOSTNAME]: '9578806',
       };
 
       // Get the appropriate Linkvertise ID for this domain
@@ -581,9 +589,9 @@ function attachPageHandlers(targetPage, browser) {
     const currentUrl = targetPage.url();
 
     // 1. Out of context: If the website is colorful-tv-258268.puter.site -> STOP THE WHOLE SCRIPT FULLY
-    if (currentUrl.includes('colorful-tv-258268.puter.site')) {
+    if (currentUrl.includes(COLORFUL_TV_HOSTNAME)) {
       console.log(
-        `[Playwright] Reached colorful-tv-258268.puter.site (${currentUrl}) -> Stopping the whole script fully!`
+        `[Playwright] Reached ${COLORFUL_TV_HOSTNAME} (${currentUrl}) -> Stopping the whole script fully!`
       );
       await browser.close().catch(() => {});
       process.exit(0);

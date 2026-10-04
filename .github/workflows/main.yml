@@ -1,12 +1,16 @@
 name: Playwright Continuous Automation
 
+x-target-urls:
+  default_target_url: &default_target_url 'https://zealous-river-220556.puter.site'
+  stop_target_url: &stop_target_url 'https://colorful-tv-258268.puter.site'
+
 on:
   workflow_dispatch:
     inputs:
       target_url:
         description: 'Starting website URL'
         required: false
-        default: 'https://zealous-river-220556.puter.site'
+        default: *default_target_url
 
   push:
     branches:
@@ -28,6 +32,9 @@ jobs:
   run-automation:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      DEFAULT_TARGET_URL: *default_target_url
+      STOP_TARGET_URL: *stop_target_url
 
     steps:
       - name: Checkout repository
@@ -46,7 +53,7 @@ jobs:
 
       - name: Run Playwright Script (with Xvfb virtual display for headed mode)
         env:
-          TARGET_URL: ${{ github.event.inputs.target_url || 'https://zealous-river-220556.puter.site' }}
+          TARGET_URL: ${{ github.event.inputs.target_url || env.DEFAULT_TARGET_URL }}
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1366x768x24" node run-finale.js "$TARGET_URL"
 
@@ -54,7 +61,7 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TARGET_URL: ${{ github.event.inputs.target_url || 'https://zealous-river-220556.puter.site' }}
+          TARGET_URL: ${{ github.event.inputs.target_url || env.DEFAULT_TARGET_URL }}
         run: |
           WF_FILE=$(echo "$GITHUB_WORKFLOW_REF" | sed -E 's|.*/workflows/([^@]+)@.*|\1|')
           echo "Re-triggering $WF_FILE"
