@@ -1,0 +1,403 @@
+# ============================================================================
+# Playwright Continuous Automation
+#
+# The 10 puter.site URLs are executed ONE BY ONE, each in its own independent
+# job (fresh runner, fresh browser, fresh Playwright context). Jobs are chained
+# with `needs:` so they run strictly sequentially:
+#
+#   site-01 -> site-02 -> site-03 -> ... -> site-10
+#
+# Every job runs `node run-finale.js <TARGET_URL>` under Xvfb (headed mode) and
+# is expected to end with:
+#
+#   [Playwright] Reached colorful-tv-258268.puter.site (<url>) -> Stopping the whole script fully!
+#   [Playwright] Browser disconnected. Exiting script.
+#
+# i.e. exit code 0, triggered by the finale host. If that marker is missing the
+# job is marked failed, but the chain STILL continues, because `if: always()`
+# is evaluated before `needs` results are taken into account.
+# ============================================================================
+
+name: Playwright Continuous Automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      # `choice` (not number/boolean) on purpose: the restart job re-dispatches
+      # this workflow with `gh workflow run -f ...`, which always sends strings.
+      start_from:
+        description: 'Chain position to start from. Jobs before it are skipped.'
+        required: false
+        type: choice
+        default: '1'
+        options: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']
+      restart_after_chain:
+        description: 'Re-trigger this workflow when job 10 finishes (continuous loop)'
+        required: false
+        type: choice
+        default: 'true'
+        options: ['true', 'false']
+
+  push:
+    branches:
+      - main
+      - master
+
+  schedule:
+    # Drives the continuous loop: a fresh full 10-job chain every 30 minutes.
+    - cron: '*/30 * * * *'
+
+permissions:
+  actions: write      # needed by the restart job (gh workflow run)
+  contents: read
+
+# Only one chain at a time; a new run queues instead of cancelling the current one.
+concurrency:
+  group: playwright-continuous-runner
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20'
+  RUN_TIMEOUT_SECONDS: '900'
+  FINALE_HOST: 'colorful-tv-258268.puter.site'
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Normalise the dispatch inputs once, so every site job can reuse them.
+  # --------------------------------------------------------------------------
+  prepare:
+    name: '00 - Prepare chain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      start-index: ${{ steps.norm.outputs.start-index }}
+      restart: ${{ steps.norm.outputs.restart }}
+    steps:
+      - name: Normalise inputs
+        id: norm
+        shell: bash
+        run: |
+          RAW="${{ github.event.inputs.start_from }}"
+          case "$RAW" in
+            ''|*[!0-9]*) IDX=1 ;;
+            *)           IDX=$((10#$RAW)) ;;
+          esac
+          [ "$IDX" -lt 1 ]  && IDX=1
+          [ "$IDX" -gt 10 ] && IDX=10
+
+          RESTART="false"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+             && [ "${{ github.event.inputs.restart_after_chain }}" = "true" ]; then
+            RESTART="true"
+          fi
+
+          echo "start-index=$IDX" >> "$GITHUB_OUTPUT"
+          echo "restart=$RESTART" >> "$GITHUB_OUTPUT"
+          echo "Chain starts at job $IDX / 10 - auto-restart = $RESTART"
+
+  # --------------------------------------------------------------------------
+  site-01:
+    name: '01 - zealous-river-220556'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [prepare]
+    # `always()` keeps the chain alive even if the previous job failed/timed out;
+    # the numeric guard lets `start_from` skip the earlier links of the chain.
+    if: always() && needs.prepare.outputs.start-index <= 1
+    outputs:
+      reached-finale: ${{ steps.finale.outputs.reached-finale }}
+      exit-code: ${{ steps.finale.outputs.exit-code }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 'Run run-finale.js on https://zealous-river-220556.puter.site'
+        id: finale
+        uses: ./.github/actions/run-finale
+        with:
+          target-url: 'https://zealous-river-220556.puter.site'
+          node-version: ${{ env.NODE_VERSION }}
+          run-timeout-seconds: ${{ env.RUN_TIMEOUT_SECONDS }}
+          finale-host: ${{ env.FINALE_HOST }}
+
+  # --------------------------------------------------------------------------
+  site-02:
+    name: '02 - witty-snake-472744'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [prepare, site-01]
+    # `always()` keeps the chain alive even if the previous job failed/timed out;
+    # the numeric guard lets `start_from` skip the earlier links of the chain.
+    if: always() && needs.prepare.outputs.start-index <= 2
+    outputs:
+      reached-finale: ${{ steps.finale.outputs.reached-finale }}
+      exit-code: ${{ steps.finale.outputs.exit-code }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 'Run run-finale.js on https://witty-snake-472744.puter.site'
+        id: finale
+        uses: ./.github/actions/run-finale
+        with:
+          target-url: 'https://witty-snake-472744.puter.site'
+          node-version: ${{ env.NODE_VERSION }}
+          run-timeout-seconds: ${{ env.RUN_TIMEOUT_SECONDS }}
+          finale-host: ${{ env.FINALE_HOST }}
+
+  # --------------------------------------------------------------------------
+  site-03:
+    name: '03 - kind-street-188208'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [prepare, site-02]
+    # `always()` keeps the chain alive even if the previous job failed/timed out;
+    # the numeric guard lets `start_from` skip the earlier links of the chain.
+    if: always() && needs.prepare.outputs.start-index <= 3
+    outputs:
+      reached-finale: ${{ steps.finale.outputs.reached-finale }}
+      exit-code: ${{ steps.finale.outputs.exit-code }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 'Run run-finale.js on https://kind-street-188208.puter.site'
+        id: finale
+        uses: ./.github/actions/run-finale
+        with:
+          target-url: 'https://kind-street-188208.puter.site'
+          node-version: ${{ env.NODE_VERSION }}
+          run-timeout-seconds: ${{ env.RUN_TIMEOUT_SECONDS }}
+          finale-host: ${{ env.FINALE_HOST }}
+
+  # --------------------------------------------------------------------------
+  site-04:
+    name: '04 - honest-bee-81788'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [prepare, site-03]
+    # `always()` keeps the chain alive even if the previous job failed/timed out;
+    # the numeric guard lets `start_from` skip the earlier links of the chain.
+    if: always() && needs.prepare.outputs.start-index <= 4
+    outputs:
+      reached-finale: ${{ steps.finale.outputs.reached-finale }}
+      exit-code: ${{ steps.finale.outputs.exit-code }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 'Run run-finale.js on https://honest-bee-81788.puter.site'
+        id: finale
+        uses: ./.github/actions/run-finale
+        with:
+          target-url: 'https://honest-bee-81788.puter.site'
+          node-version: ${{ env.NODE_VERSION }}
+          run-timeout-seconds: ${{ env.RUN_TIMEOUT_SECONDS }}
+          finale-host: ${{ env.FINALE_HOST }}
+
+  # --------------------------------------------------------------------------
+  site-05:
+    name: '05 - victorious-square-662213'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [prepare, site-04]
+    # `always()` keeps the chain alive even if the previous job failed/timed out;
+    # the numeric guard lets `start_from` skip the earlier links of the chain.
+    if: always() && needs.prepare.outputs.start-index <= 5
+    outputs:
+      reached-finale: ${{ steps.finale.outputs.reached-finale }}
+      exit-code: ${{ steps.finale.outputs.exit-code }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 'Run run-finale.js on https://victorious-square-662213.puter.site'
+        id: finale
+        uses: ./.github/actions/run-finale
+        with:
+          target-url: 'https://victorious-square-662213.puter.site'
+          node-version: ${{ env.NODE_VERSION }}
+          run-timeout-seconds: ${{ env.RUN_TIMEOUT_SECONDS }}
+          finale-host: ${{ env.FINALE_HOST }}
+
+  # --------------------------------------------------------------------------
+  site-06:
+    name: '06 - relaxed-crab-648834'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [prepare, site-05]
+    # `always()` keeps the chain alive even if the previous job failed/timed out;
+    # the numeric guard lets `start_from` skip the earlier links of the chain.
+    if: always() && needs.prepare.outputs.start-index <= 6
+    outputs:
+      reached-finale: ${{ steps.finale.outputs.reached-finale }}
+      exit-code: ${{ steps.finale.outputs.exit-code }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 'Run run-finale.js on https://relaxed-crab-648834.puter.site'
+        id: finale
+        uses: ./.github/actions/run-finale
+        with:
+          target-url: 'https://relaxed-crab-648834.puter.site'
+          node-version: ${{ env.NODE_VERSION }}
+          run-timeout-seconds: ${{ env.RUN_TIMEOUT_SECONDS }}
+          finale-host: ${{ env.FINALE_HOST }}
+
+  # --------------------------------------------------------------------------
+  site-07:
+    name: '07 - smart-mountain-937000'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [prepare, site-06]
+    # `always()` keeps the chain alive even if the previous job failed/timed out;
+    # the numeric guard lets `start_from` skip the earlier links of the chain.
+    if: always() && needs.prepare.outputs.start-index <= 7
+    outputs:
+      reached-finale: ${{ steps.finale.outputs.reached-finale }}
+      exit-code: ${{ steps.finale.outputs.exit-code }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 'Run run-finale.js on https://smart-mountain-937000.puter.site'
+        id: finale
+        uses: ./.github/actions/run-finale
+        with:
+          target-url: 'https://smart-mountain-937000.puter.site'
+          node-version: ${{ env.NODE_VERSION }}
+          run-timeout-seconds: ${{ env.RUN_TIMEOUT_SECONDS }}
+          finale-host: ${{ env.FINALE_HOST }}
+
+  # --------------------------------------------------------------------------
+  site-08:
+    name: '08 - avid-mountain-909877'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [prepare, site-07]
+    # `always()` keeps the chain alive even if the previous job failed/timed out;
+    # the numeric guard lets `start_from` skip the earlier links of the chain.
+    if: always() && needs.prepare.outputs.start-index <= 8
+    outputs:
+      reached-finale: ${{ steps.finale.outputs.reached-finale }}
+      exit-code: ${{ steps.finale.outputs.exit-code }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 'Run run-finale.js on https://avid-mountain-909877.puter.site'
+        id: finale
+        uses: ./.github/actions/run-finale
+        with:
+          target-url: 'https://avid-mountain-909877.puter.site'
+          node-version: ${{ env.NODE_VERSION }}
+          run-timeout-seconds: ${{ env.RUN_TIMEOUT_SECONDS }}
+          finale-host: ${{ env.FINALE_HOST }}
+
+  # --------------------------------------------------------------------------
+  site-09:
+    name: '09 - jolly-road-702644'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [prepare, site-08]
+    # `always()` keeps the chain alive even if the previous job failed/timed out;
+    # the numeric guard lets `start_from` skip the earlier links of the chain.
+    if: always() && needs.prepare.outputs.start-index <= 9
+    outputs:
+      reached-finale: ${{ steps.finale.outputs.reached-finale }}
+      exit-code: ${{ steps.finale.outputs.exit-code }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 'Run run-finale.js on https://jolly-road-702644.puter.site'
+        id: finale
+        uses: ./.github/actions/run-finale
+        with:
+          target-url: 'https://jolly-road-702644.puter.site'
+          node-version: ${{ env.NODE_VERSION }}
+          run-timeout-seconds: ${{ env.RUN_TIMEOUT_SECONDS }}
+          finale-host: ${{ env.FINALE_HOST }}
+
+  # --------------------------------------------------------------------------
+  site-10:
+    name: '10 - colorful-tv-258268'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [prepare, site-09]
+    # `always()` keeps the chain alive even if the previous job failed/timed out;
+    # the numeric guard lets `start_from` skip the earlier links of the chain.
+    if: always() && needs.prepare.outputs.start-index <= 10
+    outputs:
+      reached-finale: ${{ steps.finale.outputs.reached-finale }}
+      exit-code: ${{ steps.finale.outputs.exit-code }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 'Run run-finale.js on https://colorful-tv-258268.puter.site'
+        id: finale
+        uses: ./.github/actions/run-finale
+        with:
+          target-url: 'https://colorful-tv-258268.puter.site'
+          node-version: ${{ env.NODE_VERSION }}
+          run-timeout-seconds: ${{ env.RUN_TIMEOUT_SECONDS }}
+          finale-host: ${{ env.FINALE_HOST }}
+
+  # --------------------------------------------------------------------------
+  # One-page report for the whole chain.
+  # --------------------------------------------------------------------------
+  chain-summary:
+    name: '11 - Chain summary'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [prepare, site-01, site-02, site-03, site-04, site-05,
+            site-06, site-07, site-08, site-09, site-10]
+    if: always()
+    steps:
+      - name: Write job summary
+        shell: bash
+        run: |
+          {
+            echo "## Playwright chain - 10 sequential jobs"
+            echo ""
+            echo "Finale host: `${{ env.FINALE_HOST }}` | started from job `${{ needs.prepare.outputs.start-index }}`"
+            echo ""
+            echo "| # | Target URL | Job | Reached finale | Exit |"
+            echo "|---|------------|-----|----------------|------|"
+            echo "| 01 | zealous-river-220556.puter.site | ${{ needs.site-01.result }} | ${{ needs.site-01.outputs.reached-finale }} | ${{ needs.site-01.outputs.exit-code }} |"
+            echo "| 02 | witty-snake-472744.puter.site | ${{ needs.site-02.result }} | ${{ needs.site-02.outputs.reached-finale }} | ${{ needs.site-02.outputs.exit-code }} |"
+            echo "| 03 | kind-street-188208.puter.site | ${{ needs.site-03.result }} | ${{ needs.site-03.outputs.reached-finale }} | ${{ needs.site-03.outputs.exit-code }} |"
+            echo "| 04 | honest-bee-81788.puter.site | ${{ needs.site-04.result }} | ${{ needs.site-04.outputs.reached-finale }} | ${{ needs.site-04.outputs.exit-code }} |"
+            echo "| 05 | victorious-square-662213.puter.site | ${{ needs.site-05.result }} | ${{ needs.site-05.outputs.reached-finale }} | ${{ needs.site-05.outputs.exit-code }} |"
+            echo "| 06 | relaxed-crab-648834.puter.site | ${{ needs.site-06.result }} | ${{ needs.site-06.outputs.reached-finale }} | ${{ needs.site-06.outputs.exit-code }} |"
+            echo "| 07 | smart-mountain-937000.puter.site | ${{ needs.site-07.result }} | ${{ needs.site-07.outputs.reached-finale }} | ${{ needs.site-07.outputs.exit-code }} |"
+            echo "| 08 | avid-mountain-909877.puter.site | ${{ needs.site-08.result }} | ${{ needs.site-08.outputs.reached-finale }} | ${{ needs.site-08.outputs.exit-code }} |"
+            echo "| 09 | jolly-road-702644.puter.site | ${{ needs.site-09.result }} | ${{ needs.site-09.outputs.reached-finale }} | ${{ needs.site-09.outputs.exit-code }} |"
+            echo "| 10 | colorful-tv-258268.puter.site | ${{ needs.site-10.result }} | ${{ needs.site-10.outputs.reached-finale }} | ${{ needs.site-10.outputs.exit-code }} |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # --------------------------------------------------------------------------
+  # Optional continuous mode: re-dispatch this workflow after job 10.
+  # For push / schedule events this stays off - the 30-minute cron drives the loop.
+  # --------------------------------------------------------------------------
+  restart-chain:
+    name: '12 - Restart chain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [prepare, chain-summary]
+    if: always() && needs.prepare.outputs.restart == 'true'
+    steps:
+      - name: Re-trigger this workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          WF_FILE=$(echo "$GITHUB_WORKFLOW_REF" | sed -E 's|.*/workflows/([^@]+)@.*|\1|')
+          echo "Re-triggering $WF_FILE on ${{ github.ref_name }}"
+          gh workflow run "$WF_FILE" \
+            --ref "${{ github.ref_name }}" \
+            -f start_from=1 \
+            -f restart_after_chain=true
