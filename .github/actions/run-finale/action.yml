@@ -1,0 +1,150 @@
+name: 'Run run-finale.js on one target URL'
+description: >
+  Installs npm deps + Playwright Chromium, runs run-finale.js against a single target URL
+  inside a virtual display (headed mode), and then verifies that the run reached the finale
+  host (colorful-tv-258268.puter.site) so the script stopped itself fully with exit code 0.
+
+inputs:
+  target-url:
+    description: 'URL handed to run-finale.js (CLI arg + TARGET_URL env var)'
+    required: true
+  node-version:
+    description: 'Node.js version to install'
+    required: false
+    default: '20'
+  run-timeout-seconds:
+    description: 'Hard wall-clock limit for the Playwright run (killed with `timeout` if exceeded)'
+    required: false
+    default: '900'
+  finale-host:
+    description: 'Hostname that marks the end of the redirect chain'
+    required: false
+    default: 'colorful-tv-258268.puter.site'
+
+outputs:
+  reached-finale:
+    description: 'true when the run log contains "[Playwright] Reached <finale-host>"'
+    value: ${{ steps.verify.outputs.reached-finale }}
+  exit-code:
+    description: 'Raw exit code of the node process (0 = stopped cleanly, 124/137 = hard timeout)'
+    value: ${{ steps.run.outputs.exit-code }}
+  log-file:
+    description: 'Path of the captured run log'
+    value: ${{ steps.paths.outputs.log-file }}
+
+runs:
+  using: 'composite'
+  steps:
+    # Runs first and cannot fail, so the artefact name / log path always exist.
+    - name: Prepare log path
+      id: paths
+      shell: bash
+      env:
+        TARGET_URL: ${{ inputs.target-url }}
+      run: |
+        SLUG="$(printf '%s' "$TARGET_URL" | sed -E 's#https?://##; s#[^A-Za-z0-9._-]#-#g')"
+        [ -n "$SLUG" ] || SLUG="target"
+        mkdir -p artifacts
+        echo "slug=$SLUG"                        >> "$GITHUB_OUTPUT"
+        echo "log-file=artifacts/run-finale-$SLUG.log" >> "$GITHUB_OUTPUT"
+
+    - name: Set up Node.js ${{ inputs.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+
+    - name: Install npm dependencies
+      shell: bash
+      run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+
+    - name: Restore Playwright browser cache
+      id: pw-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-playwright-chromium-
+
+    - name: Install Playwright Chromium + system dependencies
+      shell: bash
+      run: npx playwright install --with-deps chromium
+
+    - name: 'Run Playwright script → ${{ inputs.target-url }}'
+      id: run
+      shell: bash
+      env:
+        TARGET_URL: ${{ inputs.target-url }}
+        RUN_TIMEOUT: ${{ inputs.run-timeout-seconds }}
+        FINALE_HOST: ${{ inputs.finale-host }}
+        LOG: ${{ steps.paths.outputs.log-file }}
+      run: |
+        set -u
+        mkdir -p artifacts
+
+        echo "=========================================================="
+        echo " TARGET URL    : $TARGET_URL"
+        echo " LOG FILE      : $LOG"
+        echo " HARD TIMEOUT  : ${RUN_TIMEOUT}s"
+        echo " FINALE HOST   : $FINALE_HOST"
+        echo "=========================================================="
+
+        set +e
+        timeout --kill-after=30s "${RUN_TIMEOUT}s" \
+          xvfb-run --auto-servernum --server-args="-screen 0 1366x768x24" \
+          node run-finale.js "$TARGET_URL" 2>&1 | tee "$LOG"
+        CODE=${PIPESTATUS[0]}
+        set -e
+
+        echo "exit-code=$CODE" >> "$GITHUB_OUTPUT"
+        echo ""
+        echo "[runner] node run-finale.js exited with code $CODE"
+
+        if [ "$CODE" -eq 124 ] || [ "$CODE" -eq 137 ]; then
+          echo "::warning title=Hard timeout::The run was killed after ${RUN_TIMEOUT}s without reaching ${FINALE_HOST}."
+        fi
+
+        # Exit 0 here on purpose: the next step decides pass/fail from the log
+        # content, so a hung or failed run still yields a readable artefact and
+        # a clear verdict instead of a bare non-zero exit.
+        exit 0
+
+    - name: 'Verify finale reached (${{ inputs.finale-host }})'
+      id: verify
+      if: always()
+      shell: bash
+      env:
+        FINALE_HOST: ${{ inputs.finale-host }}
+        LOG: ${{ steps.paths.outputs.log-file }}
+        CODE: ${{ steps.run.outputs.exit-code }}
+      run: |
+        set -u
+        if [ -z "${LOG:-}" ] || [ ! -f "$LOG" ]; then
+          echo "reached-finale=false" >> "$GITHUB_OUTPUT"
+          echo "::error title=No log::Run log '$LOG' was never produced (setup or launch failure)."
+          exit 1
+        fi
+
+        echo "----- last 30 log lines -----"
+        tail -n 30 "$LOG"
+        echo "-----------------------------"
+
+        if grep -q "Reached ${FINALE_HOST}" "$LOG"; then
+          echo "reached-finale=true" >> "$GITHUB_OUTPUT"
+          echo "✅ Reached ${FINALE_HOST} -> Stopping the whole script fully (exit=${CODE})."
+          exit 0
+        fi
+
+        echo "reached-finale=false" >> "$GITHUB_OUTPUT"
+        echo "::error title=Finale not reached::Run ended (exit=${CODE}) without hitting ${FINALE_HOST}."
+        exit 1
+
+    - name: Upload run log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: run-log-${{ steps.paths.outputs.slug }}
+        path: artifacts/
+        if-no-files-found: ignore
+        retention-days: 7
